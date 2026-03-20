@@ -1,0 +1,157 @@
+// firestore.rules
+// Covers all collections across mdothree-hash, password, color, timestamp.
+// Deploy: firebase deploy --only firestore:rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────
+    // Helper functions
+    // ─────────────────────────────────────────
+
+    // True when the request is authenticated (any auth method)
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // True when the authenticated uid matches the document's uid field
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // True when the incoming write uid matches the requester
+    function ownsWrite() {
+      return isSignedIn() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // ─────────────────────────────────────────
+    // mdothree-hash: hash history & favourites
+    // ─────────────────────────────────────────
+
+    match /hash_history/{docId} {
+      allow read:   if isOwner(resource.data.uid);
+      allow create: if ownsWrite()
+                    && request.resource.data.keys().hasAll(['uid','input','algo','hash','createdAt'])
+                    && request.resource.data.input  is string
+                    && request.resource.data.algo   is string
+                    && request.resource.data.hash   is string;
+      allow delete: if isOwner(resource.data.uid);
+      allow update: if false; // history entries are immutable
+    }
+
+    match /hash_favourites/{docId} {
+      allow read:   if isOwner(resource.data.uid);
+      allow create: if ownsWrite()
+                    && request.resource.data.keys().hasAll(['uid','algo','hash','createdAt'])
+                    && request.resource.data.algo is string
+                    && request.resource.data.hash is string;
+      allow delete: if isOwner(resource.data.uid);
+      allow update: if isOwner(resource.data.uid); // allow renaming labels
+    }
+
+    // ─────────────────────────────────────────
+    // mdothree-password: history
+    // ─────────────────────────────────────────
+
+    match /password_history/{docId} {
+      allow read:   if isOwner(resource.data.uid);
+      allow create: if ownsWrite()
+                    && request.resource.data.keys().hasAll(['uid','password','length','createdAt'])
+                    && request.resource.data.password is string
+                    && request.resource.data.password.size() <= 512
+                    && request.resource.data.length   is int;
+      allow delete: if isOwner(resource.data.uid);
+      allow update: if false;
+    }
+
+    // ─────────────────────────────────────────
+    // mdothree-color: palettes & recent colors
+    // ─────────────────────────────────────────
+
+    match /color_palettes/{docId} {
+      allow read:   if isOwner(resource.data.uid);
+      allow create: if ownsWrite()
+                    && request.resource.data.keys().hasAll(['uid','name','colors','createdAt'])
+                    && request.resource.data.name   is string
+                    && request.resource.data.colors is list
+                    && request.resource.data.colors.size() <= 20;
+      allow delete: if isOwner(resource.data.uid);
+      allow update: if isOwner(resource.data.uid)
+                    && request.resource.data.uid == resource.data.uid; // uid immutable
+    }
+
+    // Recent colors: one doc per user, keyed by uid
+    match /color_recents/{uid} {
+      allow read:   if isSignedIn() && request.auth.uid == uid;
+      allow write:  if isSignedIn() && request.auth.uid == uid
+                    && request.resource.data.colors is list
+                    && request.resource.data.colors.size() <= 20;
+    }
+
+    // ─────────────────────────────────────────
+    // mdothree-timestamp: conversions & presets
+    // ─────────────────────────────────────────
+
+    match /timestamp_conversions/{docId} {
+      allow read:   if isOwner(resource.data.uid);
+      allow create: if ownsWrite()
+                    && request.resource.data.keys().hasAll(['uid','type','input','createdAt'])
+                    && request.resource.data.type  in ['unix', 'date']
+                    && request.resource.data.input is string;
+      allow delete: if isOwner(resource.data.uid);
+      allow update: if false;
+    }
+
+    match /timestamp_presets/{docId} {
+      allow read:   if isOwner(resource.data.uid);
+      allow create: if ownsWrite()
+                    && request.resource.data.keys().hasAll(['uid','fromTz','toTz','createdAt'])
+                    && request.resource.data.fromTz is string
+                    && request.resource.data.toTz   is string;
+      allow delete: if isOwner(resource.data.uid);
+      allow update: if isOwner(resource.data.uid);
+    }
+
+
+    // ─────────────────────────────────────────
+    // Stripe subscriptions
+    // Written exclusively by Cloud Functions (admin SDK / webhook).
+    // Clients may read their own doc to check Pro status.
+    // ─────────────────────────────────────────
+
+    match /subscriptions/{uid} {
+      // User can read their own subscription status (for isPro checks)
+      allow read:  if isSignedIn() && request.auth.uid == uid;
+      // Only Cloud Functions admin SDK can write (via webhook + createSetupIntent)
+      allow write: if false;
+    }
+
+    // Customer portal session tracking (optional, created by functions)
+    match /portal_sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    // ─────────────────────────────────────────
+    // Analytics (write-only from Cloud Functions admin SDK)
+    // Client cannot read or write analytics directly.
+    // ─────────────────────────────────────────
+
+    match /analytics_events/{docId} {
+      allow read:  if false;
+      allow write: if false; // written only via Cloud Functions admin SDK
+    }
+
+    match /analytics_daily/{docId} {
+      allow read:  if false;
+      allow write: if false;
+    }
+
+    // ─────────────────────────────────────────
+    // Deny all other reads/writes by default
+    // ─────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
