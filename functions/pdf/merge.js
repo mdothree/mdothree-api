@@ -3,7 +3,7 @@
 'use strict';
 
 const { PDFDocument } = require('pdf-lib');
-const { requireJSON, validatePDFArray } = require('../../lib/validate');
+const { requireJSON, validatePDFArray } = require('../lib/validate');
 
 /**
  * @param {import('express').Request}  req

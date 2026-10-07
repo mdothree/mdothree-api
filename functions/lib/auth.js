@@ -10,7 +10,7 @@ const admin = require('firebase-admin');
  * Attaches decoded token to req.user on success.
  *
  * Usage:
- *   const { verifyAuth } = require('../../lib/auth');
+ *   const { verifyAuth } = require('../lib/auth');
  *   async function myFn(req, res) {
  *     if (!await verifyAuth(req, res)) return;  // 401 already sent
  *     const uid = req.user.uid;
@@ -25,9 +25,10 @@ const admin = require('firebase-admin');
  *
  * @param {import('express').Request}  req
  * @param {import('express').Response} res
+ * @param {{allowAnonymous?: boolean}} [opts] allowAnonymous:false → 403 for anonymous-auth tokens
  * @returns {Promise<boolean>} true if authenticated, false if rejected (response already sent)
  */
-async function verifyAuth(req, res) {
+async function verifyAuth(req, res, { allowAnonymous = true } = {}) {
   const authHeader = req.headers.authorization || '';
 
   if (!authHeader.startsWith('Bearer ')) {
@@ -41,6 +42,12 @@ async function verifyAuth(req, res) {
 
   try {
     const decoded = await admin.auth().verifyIdToken(idToken);
+    if (!allowAnonymous && decoded.firebase?.sign_in_provider === 'anonymous') {
+      // Anonymous uids are per-browser and per-subdomain, and anyone can mint them
+      // with the public web key: never attach a paid subscription to one.
+      res.status(403).json({ error: 'Create an account (not a guest session) to subscribe.', code: 'anonymous_not_allowed' });
+      return false;
+    }
     req.user = decoded; // attach { uid, email, ... } to request
     return true;
   } catch (e) {
@@ -66,8 +73,8 @@ async function verifyAuth(req, res) {
  * @param {import('express').Response} res
  * @returns {Promise<boolean>}
  */
-async function verifyAuthAndUID(req, res) {
-  if (!await verifyAuth(req, res)) return false;
+async function verifyAuthAndUID(req, res, opts = {}) {
+  if (!await verifyAuth(req, res, opts)) return false;
 
   const bodyUID = req.body?.uid;
   if (bodyUID && bodyUID !== req.user.uid) {

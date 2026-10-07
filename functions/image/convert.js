@@ -4,7 +4,7 @@
 'use strict';
 
 const sharp = require('sharp');
-const { requireJSON, validateImageBase64 } = require('../../lib/validate');
+const { requireJSON, validateImageBase64 } = require('../lib/validate');
 
 const SUPPORTED_OUTPUT = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/tiff']);
 

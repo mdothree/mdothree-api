@@ -8,7 +8,7 @@
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const admin  = require('firebase-admin');
-const { verifyAuthAndUID } = require('../../lib/auth');
+const { verifyAuthAndUID } = require('../lib/auth');
 
 async function createPortalSession(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });

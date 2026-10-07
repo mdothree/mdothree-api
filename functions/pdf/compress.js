@@ -5,7 +5,7 @@
 'use strict';
 
 const { PDFDocument } = require('pdf-lib');
-const { requireJSON, validatePDFBase64 } = require('../../lib/validate');
+const { requireJSON, validatePDFBase64 } = require('../lib/validate');
 
 async function compressPDF(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });

@@ -2,13 +2,13 @@
 // POST /api/stripe/create-setup-intent
 // Creates (or retrieves) a Stripe Customer and returns a PaymentIntent client_secret
 // for the embedded Stripe Payment Element.
-// Body: { uid: string, email?: string, plan: 'monthly'|'yearly' }
+// Body: { plan: 'monthly'|'yearly' }  (uid/email come from the verified ID token)
 
 'use strict';
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const admin  = require('firebase-admin');
-const { verifyAuthAndUID } = require('../../lib/auth');
+const { verifyAuthAndUID } = require('../lib/auth');
 
 const PRICE_IDS = {
   monthly: process.env.STRIPE_PRICE_MONTHLY,
@@ -22,10 +22,15 @@ const PRICE_IDS = {
 async function createSetupIntent(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const { uid, email, plan = 'monthly' } = req.body;
-  if (!uid) return res.status(400).json({ error: '"uid" is required' });
+  // Require a verified, NON-anonymous Firebase user; the uid comes from the token.
+  // (verifyAuthAndUID was imported but never called, so anyone could create
+  // Stripe customers/subscriptions bound to any uid.)
+  if (!await verifyAuthAndUID(req, res, { allowAnonymous: false })) return;
+  const uid = req.user.uid;
+  const { plan = 'monthly' } = req.body || {};
+  const email = typeof req.user.email === 'string' ? req.user.email : undefined;
 
-  const priceId = PRICE_IDS[plan];
+  const priceId = Object.prototype.hasOwnProperty.call(PRICE_IDS, plan) ? PRICE_IDS[plan] : null;
   if (!priceId) return res.status(400).json({ error: `Unknown plan: ${plan}` });
 
   const db = admin.firestore();
@@ -39,7 +44,7 @@ async function createSetupIntent(req, res) {
       customerId = subDoc.data().stripeCustomerId;
     } else {
       const customer = await stripe.customers.create({
-        email:    email ?? undefined,
+        email,
         metadata: { firebaseUID: uid },
       });
       customerId = customer.id;

@@ -4,7 +4,7 @@
 'use strict';
 
 const sharp = require('sharp');
-const { requireJSON, validateImageBase64 } = require('../../lib/validate');
+const { requireJSON, validateImageBase64 } = require('../lib/validate');
 
 async function resizeImage(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
